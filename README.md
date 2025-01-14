@@ -1,1 +1,3 @@
-### hip_training repo
+### The repository for HIP training.
+---
+Author: Ed, Lin
