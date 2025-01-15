@@ -136,8 +136,8 @@ int main()
     // Free device and host memory
     hipFree(d_in);
     hipFree(d_out);
-    free(h_in);
-    free(h_out);
+    delete[] h_in;
+    delete[] h_out;
 
     return 0;
 }
