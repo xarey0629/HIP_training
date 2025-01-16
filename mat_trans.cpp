@@ -34,39 +34,7 @@ __global__ void lds_mat_trans_kernel(float *d_in, float *d_out, size_t width, si
 
 int main()
 {
-    // SCALAR_T h_in[ROWS * COLUMNS];
-    // SCALAR_T h_out[ROWS * COLUMNS];
-    SCALAR_T *h_in = new SCALAR_T[ROWS * COLUMNS];
-    SCALAR_T *h_out = new SCALAR_T[ROWS * COLUMNS];
-
-    // Init host input array
-    for (int i = 0; i < ROWS; i++)
-        for (int j = 0; j < COLUMNS; j++)
-            h_in[i * COLUMNS + j] = static_cast<SCALAR_T>(i + j);
-
-    // Declare device arrays
-    SCALAR_T *d_in, *d_out;
-    hipError_t err = hipMalloc(&d_in, COLUMNS * ROWS * sizeof(SCALAR_T));
-    if (err != hipSuccess) {
-        std::cerr << "hipMalloc failed for d_in: " << hipGetErrorString(err) << std::endl;
-        return -1;
-    }
-
-    err = hipMalloc(&d_out, COLUMNS * ROWS * sizeof(SCALAR_T));
-    if (err != hipSuccess) {
-        std::cerr << "hipMalloc failed for d_out: " << hipGetErrorString(err) << std::endl;
-        hipFree(d_in);
-        return -1;
-    }
-
-    err = hipMemcpy(d_in, h_in, COLUMNS * ROWS * sizeof(SCALAR_T), hipMemcpyHostToDevice);
-    if (err != hipSuccess) {
-        std::cerr << "hipMemcpy failed: " << hipGetErrorString(err) << std::endl;
-        hipFree(d_in);
-        hipFree(d_out);
-        return -1;
-    }
-        // SCALAR_T h_out[ROWS * COLUMNS];
+    // Host memory allocation
     SCALAR_T *h_in = new SCALAR_T[ROWS * COLUMNS];
     SCALAR_T *h_out = new SCALAR_T[ROWS * COLUMNS];
 
@@ -101,9 +69,11 @@ int main()
     // GPU Kernel
     dim3 blockDim(16, 16);
     dim3 gridDim((COLUMNS + blockDim.x - 1) / blockDim.x, (ROWS + blockDim.y - 1) / blockDim.y);
-    im,// mat_trans_kernel<<<gridDim, blockDim>>>(d_in, d_out, COLUMNS, ROWS);
-    _mat_trans_kernel<<<gridDim, blockDim>>>(d_in, d_out, COLUMNS, ROWS);
-    err = hipGetLastError();err =if (err != hipSuccess) {
+    // mat_trans_kernel<<<gridDim, blockDim>>>(d_in, d_out, COLUMNS, ROWS);
+    lds_mat_trans_kernel<<<gridDim, blockDim>>>(d_in, d_out, COLUMNS, ROWS);
+    
+    err = hipGetLastError();
+    if (err != hipSuccess) {
         std::cerr << "Kernel launch failed: " << hipGetErrorString(err) << std::endl;
         hipFree(d_in);
         hipFree(d_out);
