@@ -10,6 +10,16 @@ using namespace std;
 #define THREADS_PER_2D_BLOCK 32
 
 #define ROW_MAJOR 0
+#define TILE_BASED 1
+
+// HIP Error Handling
+#define HIP_CHECK(status) \
+    if (status != hipSuccess) { \
+        fprintf(stderr, "HIP Error: %s at %s:%d\n", hipGetErrorString(status), __FILE__, __LINE__); \
+        exit(status); \
+    }
+
+
 
 /*
     HIP implementation of matrix multiplication
@@ -64,7 +74,6 @@ __global__ void k_tiled_matrix_multiply_row_major(T* a, T* b, T* out, size_t dim
 }
 
 // tile-based column-major matrix multiplication on GPU
-// TODO: Validation of the results
 template <typename T>
 __global__ void k_tiled_matrix_multiply_column_major(T* a, T* b, T* out, size_t dim) {
     __shared__ T a_tile[THREADS_PER_2D_BLOCK][THREADS_PER_2D_BLOCK];
@@ -85,6 +94,7 @@ __global__ void k_tiled_matrix_multiply_column_major(T* a, T* b, T* out, size_t 
     }
     out[y * dim + x] = out_k;
 }
+
 
 
 /*
@@ -165,13 +175,16 @@ int main()
     }
 
     // Allocate memory on the GPU
-    hipMalloc(&d_arrayA, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T));
-    hipMalloc(&d_arrayB, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T));
-    hipMalloc(&d_arrayC, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T));
-    hipMemset(d_arrayC, 0, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T));
+    // hipMalloc(&d_arrayA, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T));
+    // hipMalloc(&d_arrayB, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T));
+    // hipMalloc(&d_arrayC, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T));
+    HIP_CHECK(hipMalloc(&d_arrayA, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T)));
+    HIP_CHECK(hipMalloc(&d_arrayB, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T)));
+    HIP_CHECK(hipMalloc(&d_arrayC, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T)));
+    HIP_CHECK(hipMemset(d_arrayC, 0, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T)));
 
-    hipMemcpy(d_arrayA, arrayA, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T), hipMemcpyHostToDevice);
-    hipMemcpy(d_arrayB, arrayB, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T), hipMemcpyHostToDevice);
+    HIP_CHECK(hipMemcpy(d_arrayA, arrayA, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T), hipMemcpyHostToDevice));
+    HIP_CHECK(hipMemcpy(d_arrayB, arrayB, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T), hipMemcpyHostToDevice));
 
     dim3 blockDims(THREADS_PER_2D_BLOCK, THREADS_PER_2D_BLOCK);
     dim3 gridDims(MATRIX_SIZE / THREADS_PER_2D_BLOCK + (MATRIX_SIZE % THREADS_PER_2D_BLOCK ? 1 : 0),
@@ -179,12 +192,18 @@ int main()
 
     // HIP kernel launch
     if(ROW_MAJOR) {
-        hipLaunchKernelGGL(k_matrix_multiply_row_major, blockDims, gridDims, 0, 0, d_arrayA, d_arrayB, d_arrayC, MATRIX_SIZE);
+        if(TILE_BASED)
+            hipLaunchKernelGGL(k_tiled_matrix_multiply_row_major, blockDims, gridDims, 0, 0, d_arrayA, d_arrayB, d_arrayC, MATRIX_SIZE);
+        else
+            hipLaunchKernelGGL(k_matrix_multiply_row_major, blockDims, gridDims, 0, 0, d_arrayA, d_arrayB, d_arrayC, MATRIX_SIZE);
     } else {
-        hipLaunchKernelGGL(k_matrix_multiply_column_major, blockDims, gridDims, 0, 0, d_arrayA, d_arrayB, d_arrayC, MATRIX_SIZE);
+        if(TILE_BASED)
+            hipLaunchKernelGGL(k_tiled_matrix_multiply_column_major, blockDims, gridDims, 0, 0, d_arrayA, d_arrayB, d_arrayC, MATRIX_SIZE);
+        else
+            hipLaunchKernelGGL(k_matrix_multiply_column_major, blockDims, gridDims, 0, 0, d_arrayA, d_arrayB, d_arrayC, MATRIX_SIZE);
     }
 
-    hipMemcpy(arrayC_gpu, d_arrayC, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T), hipMemcpyDeviceToHost);
+    HIP_CHECK(hipMemcpy(arrayC_gpu, d_arrayC, MATRIX_SIZE * MATRIX_SIZE * sizeof(SCALAR_T), hipMemcpyDeviceToHost));
 
 
     cout << "Matrix Multiplication Result Comparison:\n";
@@ -203,9 +222,12 @@ int main()
     }
     cout << "Number of result differences : " << num_diff << ".\n";
 
-    hipFree(d_arrayA);
-    hipFree(d_arrayB);
-    hipFree(d_arrayC);
+    // hipFree(d_arrayA);
+    // hipFree(d_arrayB);
+    // hipFree(d_arrayC);
+    HIP_CHECK(hipFree(d_arrayA));
+    HIP_CHECK(hipFree(d_arrayB));
+    HIP_CHECK(hipFree(d_arrayC));
 
     delete[] arrayA;
     delete[] arrayB;
